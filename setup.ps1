@@ -8,7 +8,79 @@ param(
     [switch]$force
 )
 
-# --- Delete mode ---
+$WORK_PLAN_NAME = "PowerSchedule-Work"
+$OFF_PLAN_NAME  = "PowerSchedule-Off"
+$LEGACY_PATTERN = 'PowerSchedule-Work|WorkHours-AlwaysOn'
+$LEGACY_PATTERN_OFF = 'PowerSchedule-Off|OffHours-AllowSleep'
+
+# --- Helper: find plan GUID by name pattern ---
+function Find-PlanGuid {
+    param([string]$namePattern)
+    $plans = (powercfg /list) -join "`n"
+    $m = [regex]::Match($plans, "([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?($namePattern)")
+    if ($m.Success) { return $m.Groups[1].Value }
+    return $null
+}
+
+# --- Helper: read power settings from a plan ---
+function Get-PlanSleepInfo {
+    param([string]$guid)
+    $info = @{ MonitorOff = 0; Mode = "off"; SuspendMin = 0 }
+
+    $videoLines     = powercfg /query $guid SUB_VIDEO VIDEOIDLE     | Select-String '0x[0-9a-fA-F]+'
+    $standbyLines   = powercfg /query $guid SUB_SLEEP STANDBYIDLE   | Select-String '0x[0-9a-fA-F]+'
+    $hibernateLines = powercfg /query $guid SUB_SLEEP HIBERNATEIDLE  | Select-String '0x[0-9a-fA-F]+'
+
+    if ($videoLines) {
+        $val = ($videoLines | Select-Object -Last 1).Matches[0].Value
+        $info.MonitorOff = [math]::Round([convert]::ToInt32($val, 16) / 60)
+    }
+    if ($standbyLines) {
+        $val = ($standbyLines | Select-Object -Last 1).Matches[0].Value
+        $sec = [convert]::ToInt32($val, 16)
+        if ($sec -gt 0) { $info.Mode = "sleep"; $info.SuspendMin = [math]::Round($sec / 60) }
+    }
+    if ($hibernateLines) {
+        $val = ($hibernateLines | Select-Object -Last 1).Matches[0].Value
+        $sec = [convert]::ToInt32($val, 16)
+        if ($sec -gt 0) { $info.Mode = "hibernate"; $info.SuspendMin = [math]::Round($sec / 60) }
+    }
+
+    return $info
+}
+
+# --- Helper: apply power settings to a plan ---
+function Set-PlanPower {
+    param([string]$guid, [int]$monitorMin, [int]$suspendMin, [string]$mode)
+
+    powercfg /setacvalueindex $guid SUB_VIDEO VIDEOIDLE ($monitorMin * 60)
+
+    switch ($mode) {
+        "sleep" {
+            powercfg /setacvalueindex $guid SUB_SLEEP STANDBYIDLE ($suspendMin * 60)
+            powercfg /setacvalueindex $guid SUB_SLEEP HIBERNATEIDLE 0
+        }
+        "hibernate" {
+            powercfg /setacvalueindex $guid SUB_SLEEP STANDBYIDLE 0
+            powercfg /setacvalueindex $guid SUB_SLEEP HIBERNATEIDLE ($suspendMin * 60)
+        }
+        default {
+            powercfg /setacvalueindex $guid SUB_SLEEP STANDBYIDLE 0
+            powercfg /setacvalueindex $guid SUB_SLEEP HIBERNATEIDLE 0
+        }
+    }
+}
+
+# --- Helper: format suspend label ---
+function Format-SuspendLabel {
+    param([string]$mode, [int]$min)
+    if ($mode -eq "off" -or $min -eq 0) { return "off" }
+    return "$mode ${min}min"
+}
+
+# ============================================
+# Delete mode
+# ============================================
 if ($delete) {
     Write-Host "=== Power Plan Auto-Switch Uninstall ===" -ForegroundColor Red
 
@@ -16,22 +88,20 @@ if ($delete) {
     if ($?) { Write-Host "  Task removed" -ForegroundColor Green }
     else    { Write-Host "  Task not found (already removed)" -ForegroundColor DarkYellow }
 
-    $plans = (powercfg /list) -join "`n"
-    $onMatch = [regex]::Match($plans, '([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?WorkHours-AlwaysOn')
-    $offMatch = [regex]::Match($plans, '([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?OffHours-AllowSleep')
+    $workGuid = Find-PlanGuid $LEGACY_PATTERN
+    $offGuid  = Find-PlanGuid $LEGACY_PATTERN_OFF
 
     powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e
 
-    if ($onMatch.Success) {
-        powercfg /delete $onMatch.Groups[1].Value
-        Write-Host "  Deleted plan: WorkHours-AlwaysOn ($($onMatch.Groups[1].Value))" -ForegroundColor Green
+    if ($workGuid) {
+        powercfg /delete $workGuid
+        Write-Host "  Deleted work plan: $workGuid" -ForegroundColor Green
     }
-    if ($offMatch.Success) {
-        powercfg /delete $offMatch.Groups[1].Value
-        Write-Host "  Deleted plan: OffHours-AllowSleep ($($offMatch.Groups[1].Value))" -ForegroundColor Green
+    if ($offGuid) {
+        powercfg /delete $offGuid
+        Write-Host "  Deleted off plan: $offGuid" -ForegroundColor Green
     }
-
-    if (-not $onMatch.Success -and -not $offMatch.Success) {
+    if (-not $workGuid -and -not $offGuid) {
         Write-Host "  No custom plans found (already removed)" -ForegroundColor DarkYellow
     }
 
@@ -45,7 +115,9 @@ if ($delete) {
     exit
 }
 
-# --- Check if already installed ---
+# ============================================
+# Status mode (already installed)
+# ============================================
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $switchScript = Join-Path $scriptDir "switch-power-plan.ps1"
 $taskExists = Get-ScheduledTask -TaskName "PowerPlan-AutoSwitch" -ErrorAction SilentlyContinue
@@ -53,132 +125,161 @@ $taskExists = Get-ScheduledTask -TaskName "PowerPlan-AutoSwitch" -ErrorAction Si
 if ($taskExists -and (Test-Path $switchScript) -and -not $force) {
     Write-Host "=== Power Plan Auto-Switch: Already Installed ===" -ForegroundColor Cyan
 
-    # Read settings from switch-power-plan.ps1
     $content = Get-Content $switchScript -Raw
     $ws = [regex]::Match($content, 'WORK_START\s*=\s*(\d+)').Groups[1].Value
     $we = [regex]::Match($content, 'WORK_END\s*=\s*(\d+)').Groups[1].Value
 
-    # Read sleep plan values via powercfg query
-    $plans = (powercfg /list) -join "`n"
-    $sleepPlanMatch = [regex]::Match($plans, '([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?OffHours-AllowSleep')
-    $monMin = "?"
-    $slpMin = "?"
-    if ($sleepPlanMatch.Success) {
-        $sg = $sleepPlanMatch.Groups[1].Value
-        # Use powercfg /query and find the last 0x line (AC value) - works regardless of OS language
-        $videoLines = powercfg /query $sg SUB_VIDEO VIDEOIDLE | Select-String '0x[0-9a-fA-F]+'
-        $standbyLines = powercfg /query $sg SUB_SLEEP STANDBYIDLE | Select-String '0x[0-9a-fA-F]+'
-        if ($videoLines) {
-            $lastVideo = ($videoLines | Select-Object -Last 1).Matches[0].Value
-            $monMin = [math]::Round([convert]::ToInt32($lastVideo, 16) / 60)
-        }
-        if ($standbyLines) {
-            $lastStandby = ($standbyLines | Select-Object -Last 1).Matches[0].Value
-            $slpMin = [math]::Round([convert]::ToInt32($lastStandby, 16) / 60)
-        }
-    }
+    $workGuid = Find-PlanGuid $LEGACY_PATTERN
+    $offGuid  = Find-PlanGuid $LEGACY_PATTERN_OFF
 
-    # Read interval from task trigger
+    $workInfo = if ($workGuid) { Get-PlanSleepInfo $workGuid } else { @{MonitorOff="?"; Mode="?"; SuspendMin=0} }
+    $offInfo  = if ($offGuid)  { Get-PlanSleepInfo $offGuid }  else { @{MonitorOff="?"; Mode="?"; SuspendMin=0} }
+
     $interval = $taskExists.Triggers[0].Repetition.Interval
     $intervalMatch = [regex]::Match($interval, 'PT(\d+)M')
     $intMin = if ($intervalMatch.Success) { $intervalMatch.Groups[1].Value } else { "?" }
 
-    # Current active plan
     $activePlan = (powercfg /getactivescheme) -join " "
-    $currentLabel = if ($activePlan -match 'WorkHours-AlwaysOn') { "WorkHours-AlwaysOn" }
-                    elseif ($activePlan -match 'OffHours-AllowSleep') { "OffHours-AllowSleep" }
+    $currentLabel = if ($activePlan -match 'PowerSchedule-Work|WorkHours-AlwaysOn') { "Work" }
+                    elseif ($activePlan -match 'PowerSchedule-Off|OffHours-AllowSleep') { "Off" }
                     else { "Other" }
 
     Write-Host ""
     Write-Host "  Current Settings" -ForegroundColor White
     Write-Host "  ----------------"
-    Write-Host "  Work hours:      ${ws}:00 ~ ${we}:00  (Always On)"
-    Write-Host "  Off hours:       Monitor off ${monMin}min, Sleep ${slpMin}min"
-    Write-Host "  Check interval:  every ${intMin} min"
-    Write-Host "  Active plan:     $currentLabel"
+    Write-Host "  Work hours:       ${ws}:00 ~ ${we}:00"
+    Write-Host "    Monitor off:    $($workInfo.MonitorOff) min"
+    Write-Host "    Suspend:        $(Format-SuspendLabel $workInfo.Mode $workInfo.SuspendMin)"
+    Write-Host "  Off hours:"
+    Write-Host "    Monitor off:    $($offInfo.MonitorOff) min"
+    Write-Host "    Suspend:        $(Format-SuspendLabel $offInfo.Mode $offInfo.SuspendMin)"
+    Write-Host "  Check interval:   every ${intMin} min"
+    Write-Host "  Active plan:      $currentLabel"
     Write-Host ""
     Write-Host "  To reinstall with new settings:  .\setup.ps1 -force" -ForegroundColor DarkGray
     Write-Host "  To uninstall:                    .\setup.ps1 -delete" -ForegroundColor DarkGray
     exit
 }
 
-# --- Install mode ---
+# ============================================
+# Install mode
+# ============================================
 Write-Host "=== Power Plan Auto-Switch Setup ===" -ForegroundColor Cyan
 Write-Host "Press Enter to use default values.`n" -ForegroundColor DarkGray
 
+$validModes = @("sleep", "hibernate", "off")
+
+# --- Time range ---
 $workStartInput = Read-Host "Work start hour [default: 9]"
 $WORK_START = if ($workStartInput) { [int]$workStartInput } else { 9 }
 
 $workEndInput = Read-Host "Work end hour   [default: 22]"
 $WORK_END = if ($workEndInput) { [int]$workEndInput } else { 22 }
 
-$monitorInput = Read-Host "Monitor off after (minutes, off-hours) [default: 30]"
-$MONITOR_OFF = if ($monitorInput) { [int]$monitorInput } else { 30 }
+# --- Work hours settings ---
+Write-Host "`n--- Work Hours Power Settings ---" -ForegroundColor White
 
-$sleepInput = Read-Host "Sleep after (minutes, off-hours)       [default: 60]"
-$SLEEP_AFTER = if ($sleepInput) { [int]$sleepInput } else { 60 }
+$wMonInput = Read-Host "  Monitor off (min) [default: 15]"
+$W_MONITOR = if ($wMonInput) { [int]$wMonInput } else { 15 }
 
-Write-Host "`n  Work hours: ${WORK_START}:00 ~ ${WORK_END}:00 -> Always On" -ForegroundColor White
-Write-Host "  Off hours:  Monitor off ${MONITOR_OFF}min, Sleep ${SLEEP_AFTER}min" -ForegroundColor White
+$wModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
+$W_MODE = if ($wModeInput) { $wModeInput.Trim().ToLower() } else { "sleep" }
+if ($W_MODE -notin $validModes) {
+    Write-Host "    Invalid mode '$W_MODE', using 'sleep'" -ForegroundColor DarkYellow
+    $W_MODE = "sleep"
+}
 
-# 1. Create power plans (skip if already exist)
+if ($W_MODE -ne "off") {
+    $wSuspendInput = Read-Host "  $($W_MODE) after (min, 0=never) [default: 0]"
+    $W_SUSPEND = if ($wSuspendInput) { [int]$wSuspendInput } else { 0 }
+} else {
+    $W_SUSPEND = 0
+}
+
+# --- Off hours settings ---
+Write-Host "`n--- Off Hours Power Settings ---" -ForegroundColor White
+
+$oMonInput = Read-Host "  Monitor off (min) [default: 15]"
+$O_MONITOR = if ($oMonInput) { [int]$oMonInput } else { 15 }
+
+$oModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
+$O_MODE = if ($oModeInput) { $oModeInput.Trim().ToLower() } else { "sleep" }
+if ($O_MODE -notin $validModes) {
+    Write-Host "    Invalid mode '$O_MODE', using 'sleep'" -ForegroundColor DarkYellow
+    $O_MODE = "sleep"
+}
+
+if ($O_MODE -ne "off") {
+    $oSuspendInput = Read-Host "  $($O_MODE) after (min, 0=never) [default: 60]"
+    $O_SUSPEND = if ($oSuspendInput) { [int]$oSuspendInput } else { 60 }
+} else {
+    $O_SUSPEND = 0
+}
+
+# --- Summary ---
+$wSuspendLabel = Format-SuspendLabel $W_MODE $W_SUSPEND
+$oSuspendLabel = Format-SuspendLabel $O_MODE $O_SUSPEND
+
+Write-Host "`n  Work: ${WORK_START}:00 ~ ${WORK_END}:00" -ForegroundColor White
+Write-Host "    Monitor off ${W_MONITOR}min, suspend: $wSuspendLabel" -ForegroundColor White
+Write-Host "  Off:  other hours" -ForegroundColor White
+Write-Host "    Monitor off ${O_MONITOR}min, suspend: $oSuspendLabel" -ForegroundColor White
+
+# ============================================
+# 1. Create power plans
+# ============================================
 Write-Host "`n[1/4] Creating power plans..." -ForegroundColor Yellow
 
-$existingPlans = (powercfg /list) -join "`n"
-$alwaysOnMatch = [regex]::Match($existingPlans, '([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?WorkHours-AlwaysOn')
-$sleepMatch = [regex]::Match($existingPlans, '([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*?OffHours-AllowSleep')
+$workGuid = Find-PlanGuid $LEGACY_PATTERN
+$offGuid  = Find-PlanGuid $LEGACY_PATTERN_OFF
 
-if ($alwaysOnMatch.Success) {
-    $alwaysOnGuid = $alwaysOnMatch.Groups[1].Value
-    Write-Host "  Always-On plan already exists: $alwaysOnGuid" -ForegroundColor DarkYellow
+if ($workGuid) {
+    powercfg /changename $workGuid $WORK_PLAN_NAME "Work hours power plan"
+    Write-Host "  Work plan exists: $workGuid" -ForegroundColor DarkYellow
 } else {
-    $alwaysOnOutput = powercfg /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e
-    $alwaysOnGuid = [regex]::Match($alwaysOnOutput, '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}').Value
-    powercfg /changename $alwaysOnGuid "WorkHours-AlwaysOn" "Work hours no sleep"
-    Write-Host "  Always-On plan created: $alwaysOnGuid" -ForegroundColor Green
+    $workOutput = powercfg /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e
+    $workGuid = [regex]::Match($workOutput, '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}').Value
+    powercfg /changename $workGuid $WORK_PLAN_NAME "Work hours power plan"
+    Write-Host "  Work plan created: $workGuid" -ForegroundColor Green
 }
 
-powercfg /setacvalueindex $alwaysOnGuid SUB_SLEEP STANDBYIDLE 0
-powercfg /setacvalueindex $alwaysOnGuid SUB_SLEEP HIBERNATEIDLE 0
-powercfg /setacvalueindex $alwaysOnGuid SUB_VIDEO VIDEOIDLE 0
+Set-PlanPower -guid $workGuid -monitorMin $W_MONITOR -suspendMin $W_SUSPEND -mode $W_MODE
 
-if ($sleepMatch.Success) {
-    $sleepGuid = $sleepMatch.Groups[1].Value
-    Write-Host "  Allow-Sleep plan already exists: $sleepGuid" -ForegroundColor DarkYellow
+if ($offGuid) {
+    powercfg /changename $offGuid $OFF_PLAN_NAME "Off hours power plan"
+    Write-Host "  Off plan exists: $offGuid" -ForegroundColor DarkYellow
 } else {
-    $sleepOutput = powercfg /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e
-    $sleepGuid = [regex]::Match($sleepOutput, '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}').Value
-    powercfg /changename $sleepGuid "OffHours-AllowSleep" "Off hours allow sleep"
-    Write-Host "  Allow-Sleep plan created: $sleepGuid" -ForegroundColor Green
+    $offOutput = powercfg /duplicatescheme 381b4222-f694-41f0-9685-ff5bb260df2e
+    $offGuid = [regex]::Match($offOutput, '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}').Value
+    powercfg /changename $offGuid $OFF_PLAN_NAME "Off hours power plan"
+    Write-Host "  Off plan created: $offGuid" -ForegroundColor Green
 }
 
-$MONITOR_OFF_SEC = $MONITOR_OFF * 60
-$SLEEP_AFTER_SEC = $SLEEP_AFTER * 60
-powercfg /setacvalueindex $sleepGuid SUB_SLEEP STANDBYIDLE $SLEEP_AFTER_SEC
-powercfg /setacvalueindex $sleepGuid SUB_SLEEP HIBERNATEIDLE 0
-powercfg /setacvalueindex $sleepGuid SUB_VIDEO VIDEOIDLE $MONITOR_OFF_SEC
+Set-PlanPower -guid $offGuid -monitorMin $O_MONITOR -suspendMin $O_SUSPEND -mode $O_MODE
 
-# 2. Generate main switch script
+# ============================================
+# 2. Generate switch script
+# ============================================
 Write-Host "`n[2/4] Creating switch script..." -ForegroundColor Yellow
 
 $mainScript = @"
 
 # Power Plan Auto-Switch (runs periodically)
 
-`$ALWAYS_ON_GUID = "$alwaysOnGuid"
-`$SLEEP_GUID     = "$sleepGuid"
-`$WORK_START     = $WORK_START
-`$WORK_END       = $WORK_END
+`$WORK_GUID  = "$workGuid"
+`$OFF_GUID   = "$offGuid"
+`$WORK_START = $WORK_START
+`$WORK_END   = $WORK_END
 
 `$hour = (Get-Date).Hour
 `$currentPlan = (powercfg /getactivescheme) -replace '.*([0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}).*', '`$1'
 
 if (`$hour -ge `$WORK_START -and `$hour -lt `$WORK_END) {
-    `$targetGuid = `$ALWAYS_ON_GUID
-    `$label = "WorkHours-AlwaysOn"
+    `$targetGuid = `$WORK_GUID
+    `$label = "Work"
 } else {
-    `$targetGuid = `$SLEEP_GUID
-    `$label = "OffHours-AllowSleep"
+    `$targetGuid = `$OFF_GUID
+    `$label = "Off"
 }
 
 if (`$currentPlan -ne `$targetGuid) {
@@ -193,7 +294,9 @@ $mainScriptPath = Join-Path $scriptDir "switch-power-plan.ps1"
 $mainScript | Out-File -FilePath $mainScriptPath -Encoding UTF8
 Write-Host "  Saved: $mainScriptPath" -ForegroundColor Green
 
+# ============================================
 # 3. Register scheduled task
+# ============================================
 Write-Host "`n[3/4] Registering scheduled task..." -ForegroundColor Yellow
 
 $taskName = "PowerPlan-AutoSwitch"
@@ -203,8 +306,14 @@ $action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$mainScriptPath`""
 
-$intervalMin = [math]::Max(5, [math]::Floor($SLEEP_AFTER / 2))
-Write-Host "  Check interval: every ${intervalMin} min (half of sleep time)" -ForegroundColor DarkGray
+# Interval: half of smallest non-zero suspend time, min 5, default 15
+$suspendTimes = @($W_SUSPEND, $O_SUSPEND) | Where-Object { $_ -gt 0 }
+if ($suspendTimes.Count -gt 0) {
+    $intervalMin = [math]::Max(5, [math]::Floor(($suspendTimes | Measure-Object -Minimum).Minimum / 2))
+} else {
+    $intervalMin = 15
+}
+Write-Host "  Check interval: every ${intervalMin} min" -ForegroundColor DarkGray
 
 $trigger = New-ScheduledTaskTrigger -Daily -At "00:00"
 $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInterval (New-TimeSpan -Minutes $intervalMin)).Repetition
@@ -223,20 +332,23 @@ Register-ScheduledTask `
     -Settings $settings `
     -RunLevel Highest `
     -User "SYSTEM" `
-    -Description "Auto-switch power plan every ${intervalMin}min (work: ${WORK_START}~${WORK_END})"
+    -Description "Auto-switch power plan (work: ${WORK_START}~${WORK_END}, interval: ${intervalMin}min)"
 
 Write-Host "  Registered: $taskName" -ForegroundColor Green
 
+# ============================================
 # 4. Done
+# ============================================
 Write-Host "`n[4/4] Setup complete!" -ForegroundColor Cyan
 Write-Host @"
 
   Summary
   -------
-  ${WORK_START}:00 ~ $($WORK_END-1):59  ->  Always On (no sleep, no monitor off)
-  ${WORK_END}:00 ~ $($WORK_START-1):59  ->  Monitor off ${MONITOR_OFF}min, sleep ${SLEEP_AFTER}min
-  Checks every ${intervalMin} minutes
-  WakeToRun enabled
+  Work: ${WORK_START}:00 ~ $($WORK_END-1):59
+    Monitor off ${W_MONITOR}min, suspend: $wSuspendLabel
+  Off:  ${WORK_END}:00 ~ $($WORK_START-1):59
+    Monitor off ${O_MONITOR}min, suspend: $oSuspendLabel
+  Checks every ${intervalMin} min (WakeToRun enabled)
 
   Verify
   ------

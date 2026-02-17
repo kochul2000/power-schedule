@@ -10,14 +10,17 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 
 ### 개요
 
-업무 시간에는 절전/모니터 꺼짐 없이 항상 켜짐 상태를 유지하고, 비업무 시간에는 자동으로 절전 모드로 전환합니다. Windows 작업 스케줄러를 통해 주기적으로 실행됩니다.
+업무 시간과 비업무 시간에 각각 다른 전원 설정(모니터 꺼짐, 절전/최대 절전/끄기)을 자동 적용합니다. Windows 작업 스케줄러를 통해 주기적으로 실행됩니다.
 
-### 동작 방식
+### 설정 항목
 
-| 시간대 | 전원 계획 | 설명 |
-|--------|-----------|------|
-| 업무 시간 (기본 9:00~22:00) | WorkHours-AlwaysOn | 모니터 꺼짐 없음, 절전 없음 |
-| 비업무 시간 | OffHours-AllowSleep | 모니터 꺼짐 30분, 절전 60분 (기본값) |
+설치 시 업무/비업무 시간 각각에 대해 다음을 개별 설정할 수 있습니다:
+
+| 항목 | 업무 시간 기본값 | 비업무 시간 기본값 |
+|------|:---:|:---:|
+| 모니터 꺼짐 | 15분 | 15분 |
+| 절전 모드 (sleep / hibernate / off) | sleep | sleep |
+| 절전 진입 시간 | 0분 (비활성) | 60분 |
 
 ### 설치
 
@@ -27,10 +30,7 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 .\setup.ps1
 ```
 
-설치 중 다음 항목을 설정할 수 있습니다:
-- 업무 시작/종료 시간
-- 비업무 시간 모니터 꺼짐 시간
-- 비업무 시간 절전 진입 시간
+설치 과정에서 대화형으로 모든 값을 입력받습니다. Enter를 누르면 기본값이 적용됩니다.
 
 ### 상태 확인
 
@@ -54,7 +54,7 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 
 | 파일 | 설명 |
 |------|------|
-| `setup.ps1` | 설치/삭제/상태 확인 스크립트 |
+| `setup.ps1` | 설치 / 삭제 / 상태 확인 스크립트 |
 | `switch-power-plan.ps1` | 작업 스케줄러가 주기적으로 실행하는 전환 스크립트 (설치 시 자동 생성) |
 
 ---
@@ -63,14 +63,17 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 
 ### Overview
 
-Keeps your PC always-on during work hours (no sleep, no monitor timeout) and automatically switches to a sleep-enabled power plan during off-hours. Runs periodically via Windows Task Scheduler.
+Automatically applies different power settings (monitor timeout, sleep/hibernate/off) for work hours and off hours. Runs periodically via Windows Task Scheduler.
 
-### How It Works
+### Configuration
 
-| Time Period | Power Plan | Description |
-|-------------|-----------|-------------|
-| Work hours (default 9:00–22:00) | WorkHours-AlwaysOn | No monitor off, no sleep |
-| Off hours | OffHours-AllowSleep | Monitor off 30min, sleep 60min (defaults) |
+During setup, each time period can be configured independently:
+
+| Setting | Work hours default | Off hours default |
+|---------|:---:|:---:|
+| Monitor off | 15 min | 15 min |
+| Suspend mode (sleep / hibernate / off) | sleep | sleep |
+| Suspend after | 0 min (disabled) | 60 min |
 
 ### Installation
 
@@ -80,10 +83,7 @@ Run in an elevated (Administrator) PowerShell:
 .\setup.ps1
 ```
 
-During setup you can configure:
-- Work start/end hours
-- Off-hours monitor timeout
-- Off-hours sleep timeout
+The installer prompts for all values interactively. Press Enter to accept defaults.
 
 ### Check Status
 
