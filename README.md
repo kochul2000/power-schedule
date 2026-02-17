@@ -27,7 +27,7 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 관리자 권한 PowerShell에서 실행:
 
 ```powershell
-.\setup.ps1
+.\power-schedule.ps1
 ```
 
 설치 과정에서 대화형으로 모든 값을 입력받습니다. Enter를 누르면 기본값이 적용됩니다.
@@ -37,24 +37,24 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 이미 설치된 상태에서 다시 실행하면 현재 설정을 보여줍니다:
 
 ```powershell
-.\setup.ps1
+.\power-schedule.ps1
 ```
 
 ### 재설치 / 삭제
 
 ```powershell
 # 설정 변경 (재설치)
-.\setup.ps1 -force
+.\power-schedule.ps1 -force
 
 # 완전 삭제
-.\setup.ps1 -delete
+.\power-schedule.ps1 -delete
 ```
 
 ### 파일 구성
 
 | 파일 | 설명 |
 |------|------|
-| `setup.ps1` | 설치 / 삭제 / 상태 확인 스크립트 |
+| `power-schedule.ps1` | 설치 / 삭제 / 상태 확인 스크립트 |
 | `switch-power-plan.ps1` | 작업 스케줄러가 주기적으로 실행하는 전환 스크립트 (설치 시 자동 생성) |
 
 ---
@@ -80,7 +80,7 @@ During setup, each time period can be configured independently:
 Run in an elevated (Administrator) PowerShell:
 
 ```powershell
-.\setup.ps1
+.\power-schedule.ps1
 ```
 
 The installer prompts for all values interactively. Press Enter to accept defaults.
@@ -90,24 +90,24 @@ The installer prompts for all values interactively. Press Enter to accept defaul
 Running setup again when already installed shows current settings:
 
 ```powershell
-.\setup.ps1
+.\power-schedule.ps1
 ```
 
 ### Reinstall / Uninstall
 
 ```powershell
 # Change settings (reinstall)
-.\setup.ps1 -force
+.\power-schedule.ps1 -force
 
 # Full uninstall
-.\setup.ps1 -delete
+.\power-schedule.ps1 -delete
 ```
 
 ### Files
 
 | File | Description |
 |------|-------------|
-| `setup.ps1` | Install / uninstall / status script |
+| `power-schedule.ps1` | Install / uninstall / status script |
 | `switch-power-plan.ps1` | Switching script executed periodically by Task Scheduler (auto-generated on install) |
 
 ---

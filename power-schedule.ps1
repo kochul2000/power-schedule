@@ -156,8 +156,8 @@ if ($taskExists -and (Test-Path $switchScript) -and -not $force) {
     Write-Host "  Check interval:   every ${intMin} min"
     Write-Host "  Active plan:      $currentLabel"
     Write-Host ""
-    Write-Host "  To reinstall with new settings:  .\setup.ps1 -force" -ForegroundColor DarkGray
-    Write-Host "  To uninstall:                    .\setup.ps1 -delete" -ForegroundColor DarkGray
+    Write-Host "  To reinstall with new settings:  .\power-schedule.ps1 -force" -ForegroundColor DarkGray
+    Write-Host "  To uninstall:                    .\power-schedule.ps1 -delete" -ForegroundColor DarkGray
     exit
 }
 
@@ -358,5 +358,5 @@ Write-Host @"
 
   Uninstall
   ---------
-  .\setup.ps1 -delete
+  .\power-schedule.ps1 -delete
 "@
