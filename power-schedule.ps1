@@ -220,8 +220,8 @@ if ($O_MODE -ne "off") {
 
 # --- Task options ---
 Write-Host "`n--- Task Options ---" -ForegroundColor White
-Write-Host "  Wake to run: PC가 절전 중일 때 깨워서 전원 계획을 전환합니다." -ForegroundColor DarkGray
-Write-Host "               끄면 절전 중에는 아무 동작도 하지 않습니다." -ForegroundColor DarkGray
+Write-Host "  Wake to run: wakes the PC from sleep to switch power plans." -ForegroundColor DarkGray
+Write-Host "               If off, does nothing while the PC is sleeping." -ForegroundColor DarkGray
 $wakeInput = Read-Host "  Wake to run (y/n) [default: n]"
 $WAKE_TO_RUN = $wakeInput -match '^[yY]'
 
