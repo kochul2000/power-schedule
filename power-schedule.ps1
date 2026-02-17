@@ -27,21 +27,21 @@ function Get-PlanSleepInfo {
     param([string]$guid)
     $info = @{ MonitorOff = 0; Mode = "off"; SuspendMin = 0 }
 
-    $videoLines     = powercfg /query $guid SUB_VIDEO VIDEOIDLE     | Select-String '0x[0-9a-fA-F]+'
-    $standbyLines   = powercfg /query $guid SUB_SLEEP STANDBYIDLE   | Select-String '0x[0-9a-fA-F]+'
-    $hibernateLines = powercfg /query $guid SUB_SLEEP HIBERNATEIDLE  | Select-String '0x[0-9a-fA-F]+'
+    $videoAC     = powercfg /query $guid SUB_VIDEO VIDEOIDLE     | Select-String 'AC.*(0x[0-9a-fA-F]+)'
+    $standbyAC   = powercfg /query $guid SUB_SLEEP STANDBYIDLE   | Select-String 'AC.*(0x[0-9a-fA-F]+)'
+    $hibernateAC = powercfg /query $guid SUB_SLEEP HIBERNATEIDLE  | Select-String 'AC.*(0x[0-9a-fA-F]+)'
 
-    if ($videoLines) {
-        $val = ($videoLines | Select-Object -Last 1).Matches[0].Value
+    if ($videoAC) {
+        $val = $videoAC.Matches[0].Groups[1].Value
         $info.MonitorOff = [math]::Round([convert]::ToInt32($val, 16) / 60)
     }
-    if ($standbyLines) {
-        $val = ($standbyLines | Select-Object -Last 1).Matches[0].Value
+    if ($standbyAC) {
+        $val = $standbyAC.Matches[0].Groups[1].Value
         $sec = [convert]::ToInt32($val, 16)
         if ($sec -gt 0) { $info.Mode = "sleep"; $info.SuspendMin = [math]::Round($sec / 60) }
     }
-    if ($hibernateLines) {
-        $val = ($hibernateLines | Select-Object -Last 1).Matches[0].Value
+    if ($hibernateAC) {
+        $val = $hibernateAC.Matches[0].Groups[1].Value
         $sec = [convert]::ToInt32($val, 16)
         if ($sec -gt 0) { $info.Mode = "hibernate"; $info.SuspendMin = [math]::Round($sec / 60) }
     }
