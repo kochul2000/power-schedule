@@ -75,7 +75,7 @@ function Set-PlanPower {
 function Format-SuspendLabel {
     param([string]$mode, [int]$min)
     if ($mode -eq "off" -or $min -eq 0) { return "off" }
-    return "$mode ${min}min"
+    return "$mode ${min} min"
 }
 
 # ============================================
@@ -220,10 +220,13 @@ if ($O_MODE -ne "off") {
 $wSuspendLabel = Format-SuspendLabel $W_MODE $W_SUSPEND
 $oSuspendLabel = Format-SuspendLabel $O_MODE $O_SUSPEND
 
-Write-Host "`n  Work: ${WORK_START}:00 ~ ${WORK_END}:00" -ForegroundColor White
-Write-Host "    Monitor off ${W_MONITOR}min, suspend: $wSuspendLabel" -ForegroundColor White
-Write-Host "  Off:  other hours" -ForegroundColor White
-Write-Host "    Monitor off ${O_MONITOR}min, suspend: $oSuspendLabel" -ForegroundColor White
+Write-Host ""
+Write-Host "  Work hours:       ${WORK_START}:00 ~ ${WORK_END}:00" -ForegroundColor White
+Write-Host "    Monitor off:    ${W_MONITOR} min" -ForegroundColor White
+Write-Host "    Suspend:        $wSuspendLabel" -ForegroundColor White
+Write-Host "  Off hours:" -ForegroundColor White
+Write-Host "    Monitor off:    ${O_MONITOR} min" -ForegroundColor White
+Write-Host "    Suspend:        $oSuspendLabel" -ForegroundColor White
 
 # ============================================
 # 1. Create power plans
@@ -340,23 +343,14 @@ Write-Host "  Registered: $taskName" -ForegroundColor Green
 # 4. Done
 # ============================================
 Write-Host "`n[4/4] Setup complete!" -ForegroundColor Cyan
-Write-Host @"
-
-  Summary
-  -------
-  Work: ${WORK_START}:00 ~ $($WORK_END-1):59
-    Monitor off ${W_MONITOR}min, suspend: $wSuspendLabel
-  Off:  ${WORK_END}:00 ~ $($WORK_START-1):59
-    Monitor off ${O_MONITOR}min, suspend: $oSuspendLabel
-  Checks every ${intervalMin} min (WakeToRun enabled)
-
-  Verify
-  ------
-  powercfg /list
-  powercfg /getactivescheme
-  schtasks /query /tn PowerPlan-AutoSwitch
-
-  Uninstall
-  ---------
-  .\power-schedule.ps1 -delete
-"@
+Write-Host ""
+Write-Host "  Work hours:       ${WORK_START}:00 ~ ${WORK_END}:00"
+Write-Host "    Monitor off:    ${W_MONITOR} min"
+Write-Host "    Suspend:        $wSuspendLabel"
+Write-Host "  Off hours:"
+Write-Host "    Monitor off:    ${O_MONITOR} min"
+Write-Host "    Suspend:        $oSuspendLabel"
+Write-Host "  Check interval:   every ${intervalMin} min"
+Write-Host ""
+Write-Host "  Verify:    powercfg /list" -ForegroundColor DarkGray
+Write-Host "  Uninstall: .\power-schedule.ps1 -delete" -ForegroundColor DarkGray
