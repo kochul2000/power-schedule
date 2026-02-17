@@ -22,6 +22,12 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 | 절전 모드 (sleep / hibernate / off) | sleep | sleep |
 | 절전 진입 시간 | 0분 (비활성) | 60분 |
 
+추가 옵션:
+
+| 항목 | 기본값 | 설명 |
+|------|:---:|------|
+| Wake to run | no | PC가 절전 중일 때 깨워서 전원 계획을 전환할지 여부. 끄면 절전 중에는 아무 동작도 하지 않습니다. |
+
 ### 설치
 
 `power-schedule.ps1` 파일 하나만 있으면 됩니다. 관리자 권한 PowerShell에서 실행:
@@ -74,6 +80,12 @@ During setup, each time period can be configured independently:
 | Monitor off | 15 min | 15 min |
 | Suspend mode (sleep / hibernate / off) | sleep | sleep |
 | Suspend after | 0 min (disabled) | 60 min |
+
+Additional options:
+
+| Setting | Default | Description |
+|---------|:---:|-------------|
+| Wake to run | no | Whether to wake the PC from sleep to switch power plans. When off, does nothing while the PC is sleeping. |
 
 ### Installation
 
