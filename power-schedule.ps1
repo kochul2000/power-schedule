@@ -344,6 +344,8 @@ Write-Host "  Registered: $taskName" -ForegroundColor Green
 # ============================================
 Write-Host "`n[4/4] Setup complete!" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "  Current Settings" -ForegroundColor White
+Write-Host "  ----------------"
 Write-Host "  Work hours:       ${WORK_START}:00 ~ ${WORK_END}:00"
 Write-Host "    Monitor off:    ${W_MONITOR} min"
 Write-Host "    Suspend:        $wSuspendLabel"
