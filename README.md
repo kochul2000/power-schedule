@@ -24,7 +24,7 @@ A PowerShell tool that automatically switches Windows power plans based on time 
 
 ### 설치
 
-관리자 권한 PowerShell에서 실행:
+`power-schedule.ps1` 파일 하나만 있으면 됩니다. 관리자 권한 PowerShell에서 실행:
 
 ```powershell
 .\power-schedule.ps1
@@ -77,7 +77,7 @@ During setup, each time period can be configured independently:
 
 ### Installation
 
-Run in an elevated (Administrator) PowerShell:
+Only `power-schedule.ps1` is needed. Run in an elevated (Administrator) PowerShell:
 
 ```powershell
 .\power-schedule.ps1
