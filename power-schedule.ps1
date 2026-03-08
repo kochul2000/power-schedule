@@ -5,7 +5,18 @@
 
 param(
     [switch]$delete,
-    [switch]$force
+    [switch]$force,
+    [int]$WorkStart  = 9,
+    [int]$WorkEnd    = 22,
+    [int]$WMonitor   = 15,
+    [ValidateSet("sleep","hibernate","off")]
+    [string]$WMode   = "sleep",
+    [int]$WSuspend   = 0,
+    [int]$OMonitor   = 15,
+    [ValidateSet("sleep","hibernate","off")]
+    [string]$OMode   = "sleep",
+    [int]$OSuspend   = 60,
+    [switch]$WakeToRun
 )
 
 $WORK_PLAN_NAME = "PowerSchedule-Work"
@@ -69,6 +80,9 @@ function Set-PlanPower {
             powercfg /setacvalueindex $guid SUB_SLEEP HIBERNATEIDLE 0
         }
     }
+
+    # Disable unattended sleep timeout — sleep is controlled solely by STANDBYIDLE
+    powercfg /setacvalueindex $guid SUB_SLEEP UNATTENDSLEEP 0
 }
 
 # --- Helper: format suspend label ---
@@ -167,63 +181,81 @@ if ($taskExists -and (Test-Path $switchScript) -and -not $force) {
 # Install mode
 # ============================================
 Write-Host "=== Power Plan Auto-Switch Setup ===" -ForegroundColor Cyan
-Write-Host "Press Enter to use default values.`n" -ForegroundColor DarkGray
 
-$validModes = @("sleep", "hibernate", "off")
+# Detect non-interactive mode: any install param explicitly passed
+$installParams = @('WorkStart','WorkEnd','WMonitor','WMode','WSuspend','OMonitor','OMode','OSuspend','WakeToRun')
+$nonInteractive = ($installParams | Where-Object { $PSBoundParameters.ContainsKey($_) }).Count -gt 0
 
-# --- Time range ---
-$workStartInput = Read-Host "Work start hour [default: 9]"
-$WORK_START = if ($workStartInput) { [int]$workStartInput } else { 9 }
-
-$workEndInput = Read-Host "Work end hour   [default: 22]"
-$WORK_END = if ($workEndInput) { [int]$workEndInput } else { 22 }
-
-# --- Work hours settings ---
-Write-Host "`n--- Work Hours Power Settings ---" -ForegroundColor White
-
-$wMonInput = Read-Host "  Monitor off (min) [default: 15]"
-$W_MONITOR = if ($wMonInput) { [int]$wMonInput } else { 15 }
-
-$wModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
-$W_MODE = if ($wModeInput) { $wModeInput.Trim().ToLower() } else { "sleep" }
-if ($W_MODE -notin $validModes) {
-    Write-Host "    Invalid mode '$W_MODE', using 'sleep'" -ForegroundColor DarkYellow
-    $W_MODE = "sleep"
-}
-
-if ($W_MODE -ne "off") {
-    $wSuspendInput = Read-Host "  $($W_MODE) after (min, 0=never) [default: 0]"
-    $W_SUSPEND = if ($wSuspendInput) { [int]$wSuspendInput } else { 0 }
+if ($nonInteractive) {
+    # Use param values directly (defaults already set in param block)
+    $WORK_START  = $WorkStart
+    $WORK_END    = $WorkEnd
+    $W_MONITOR   = $WMonitor
+    $W_MODE      = $WMode
+    $W_SUSPEND   = if ($W_MODE -eq "off") { 0 } else { $WSuspend }
+    $O_MONITOR   = $OMonitor
+    $O_MODE      = $OMode
+    $O_SUSPEND   = if ($O_MODE -eq "off") { 0 } else { $OSuspend }
+    $WAKE_TO_RUN = [bool]$WakeToRun
 } else {
-    $W_SUSPEND = 0
+    Write-Host "Press Enter to use default values.`n" -ForegroundColor DarkGray
+
+    $validModes = @("sleep", "hibernate", "off")
+
+    # --- Time range ---
+    $workStartInput = Read-Host "Work start hour [default: 9]"
+    $WORK_START = if ($workStartInput) { [int]$workStartInput } else { 9 }
+
+    $workEndInput = Read-Host "Work end hour   [default: 22]"
+    $WORK_END = if ($workEndInput) { [int]$workEndInput } else { 22 }
+
+    # --- Work hours settings ---
+    Write-Host "`n--- Work Hours Power Settings ---" -ForegroundColor White
+
+    $wMonInput = Read-Host "  Monitor off (min) [default: 15]"
+    $W_MONITOR = if ($wMonInput) { [int]$wMonInput } else { 15 }
+
+    $wModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
+    $W_MODE = if ($wModeInput) { $wModeInput.Trim().ToLower() } else { "sleep" }
+    if ($W_MODE -notin $validModes) {
+        Write-Host "    Invalid mode '$W_MODE', using 'sleep'" -ForegroundColor DarkYellow
+        $W_MODE = "sleep"
+    }
+
+    if ($W_MODE -ne "off") {
+        $wSuspendInput = Read-Host "  $($W_MODE) after (min, 0=never) [default: 0]"
+        $W_SUSPEND = if ($wSuspendInput) { [int]$wSuspendInput } else { 0 }
+    } else {
+        $W_SUSPEND = 0
+    }
+
+    # --- Off hours settings ---
+    Write-Host "`n--- Off Hours Power Settings ---" -ForegroundColor White
+
+    $oMonInput = Read-Host "  Monitor off (min) [default: 15]"
+    $O_MONITOR = if ($oMonInput) { [int]$oMonInput } else { 15 }
+
+    $oModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
+    $O_MODE = if ($oModeInput) { $oModeInput.Trim().ToLower() } else { "sleep" }
+    if ($O_MODE -notin $validModes) {
+        Write-Host "    Invalid mode '$O_MODE', using 'sleep'" -ForegroundColor DarkYellow
+        $O_MODE = "sleep"
+    }
+
+    if ($O_MODE -ne "off") {
+        $oSuspendInput = Read-Host "  $($O_MODE) after (min, 0=never) [default: 60]"
+        $O_SUSPEND = if ($oSuspendInput) { [int]$oSuspendInput } else { 60 }
+    } else {
+        $O_SUSPEND = 0
+    }
+
+    # --- Task options ---
+    Write-Host "`n--- Task Options ---" -ForegroundColor White
+    Write-Host "  Wake to run: wakes the PC from sleep to switch power plans." -ForegroundColor DarkGray
+    Write-Host "               If off, does nothing while the PC is sleeping." -ForegroundColor DarkGray
+    $wakeInput = Read-Host "  Wake to run (y/n) [default: n]"
+    $WAKE_TO_RUN = $wakeInput -match '^[yY]'
 }
-
-# --- Off hours settings ---
-Write-Host "`n--- Off Hours Power Settings ---" -ForegroundColor White
-
-$oMonInput = Read-Host "  Monitor off (min) [default: 15]"
-$O_MONITOR = if ($oMonInput) { [int]$oMonInput } else { 15 }
-
-$oModeInput = Read-Host "  Suspend mode (sleep/hibernate/off) [default: sleep]"
-$O_MODE = if ($oModeInput) { $oModeInput.Trim().ToLower() } else { "sleep" }
-if ($O_MODE -notin $validModes) {
-    Write-Host "    Invalid mode '$O_MODE', using 'sleep'" -ForegroundColor DarkYellow
-    $O_MODE = "sleep"
-}
-
-if ($O_MODE -ne "off") {
-    $oSuspendInput = Read-Host "  $($O_MODE) after (min, 0=never) [default: 60]"
-    $O_SUSPEND = if ($oSuspendInput) { [int]$oSuspendInput } else { 60 }
-} else {
-    $O_SUSPEND = 0
-}
-
-# --- Task options ---
-Write-Host "`n--- Task Options ---" -ForegroundColor White
-Write-Host "  Wake to run: wakes the PC from sleep to switch power plans." -ForegroundColor DarkGray
-Write-Host "               If off, does nothing while the PC is sleeping." -ForegroundColor DarkGray
-$wakeInput = Read-Host "  Wake to run (y/n) [default: n]"
-$WAKE_TO_RUN = $wakeInput -match '^[yY]'
 
 # --- Summary ---
 $wSuspendLabel = Format-SuspendLabel $W_MODE $W_SUSPEND
