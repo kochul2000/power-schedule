@@ -4,6 +4,8 @@
 # ============================================
 
 param(
+    [Alias("h")]
+    [switch]$help,
     [switch]$delete,
     [switch]$force,
     [int]$WorkStart  = 9,
@@ -18,6 +20,45 @@ param(
     [int]$OSuspend   = 60,
     [switch]$WakeToRun
 )
+
+# ============================================
+# Help
+# ============================================
+if ($help) {
+    Write-Host ""
+    Write-Host "Power Plan Auto-Switch Setup" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage: .\power-schedule.ps1 [options]" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Options:" -ForegroundColor Yellow
+    Write-Host "  -help, -h          Show this help message"
+    Write-Host "  -delete            Uninstall (remove tasks and custom power plans)"
+    Write-Host "  -force             Force reinstall even if already installed"
+    Write-Host ""
+    Write-Host "Work Hours:" -ForegroundColor Yellow
+    Write-Host "  -WorkStart <int>   Work start hour, 0-23           [default: 9]"
+    Write-Host "  -WorkEnd <int>     Work end hour, 0-23             [default: 22]"
+    Write-Host "  -WMonitor <int>    Monitor off timeout (min)       [default: 15]"
+    Write-Host "  -WMode <string>    Suspend mode: sleep/hibernate/off [default: sleep]"
+    Write-Host "  -WSuspend <int>    Suspend after (min, 0=never)    [default: 0]"
+    Write-Host ""
+    Write-Host "Off Hours:" -ForegroundColor Yellow
+    Write-Host "  -OMonitor <int>    Monitor off timeout (min)       [default: 15]"
+    Write-Host "  -OMode <string>    Suspend mode: sleep/hibernate/off [default: sleep]"
+    Write-Host "  -OSuspend <int>    Suspend after (min, 0=never)    [default: 60]"
+    Write-Host ""
+    Write-Host "Task:" -ForegroundColor Yellow
+    Write-Host "  -WakeToRun         Wake PC from sleep to switch plans"
+    Write-Host ""
+    Write-Host "Examples:" -ForegroundColor Yellow
+    Write-Host "  .\power-schedule.ps1                              Interactive install" -ForegroundColor DarkGray
+    Write-Host "  .\power-schedule.ps1 -WorkStart 8 -WorkEnd 18    Non-interactive install" -ForegroundColor DarkGray
+    Write-Host "  .\power-schedule.ps1 -WMode off -OMode off        Always on (no suspend)" -ForegroundColor DarkGray
+    Write-Host "  .\power-schedule.ps1 -force                       Reinstall" -ForegroundColor DarkGray
+    Write-Host "  .\power-schedule.ps1 -delete                      Uninstall" -ForegroundColor DarkGray
+    Write-Host ""
+    exit
+}
 
 $WORK_PLAN_NAME = "PowerSchedule-Work"
 $OFF_PLAN_NAME  = "PowerSchedule-Off"
