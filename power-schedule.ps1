@@ -21,6 +21,12 @@ param(
     [switch]$WakeToRun
 )
 
+function Wait-AnyKey {
+    Write-Host ""
+    Write-Host "Press any key to close..." -ForegroundColor DarkGray
+    $null = [System.Console]::ReadKey($true)
+}
+
 # ============================================
 # Help
 # ============================================
@@ -57,6 +63,7 @@ if ($help) {
     Write-Host "  .\power-schedule.ps1 -force                       Reinstall" -ForegroundColor DarkGray
     Write-Host "  .\power-schedule.ps1 -delete                      Uninstall" -ForegroundColor DarkGray
     Write-Host ""
+    Wait-AnyKey
     exit
 }
 
@@ -167,6 +174,7 @@ if ($delete) {
     }
 
     Write-Host "`nUninstall complete." -ForegroundColor Cyan
+    Wait-AnyKey
     exit
 }
 
@@ -215,6 +223,7 @@ if ($taskExists -and (Test-Path $switchScript) -and -not $force) {
     Write-Host ""
     Write-Host "  To reinstall with new settings:  .\power-schedule.ps1 -force" -ForegroundColor DarkGray
     Write-Host "  To uninstall:                    .\power-schedule.ps1 -delete" -ForegroundColor DarkGray
+    Wait-AnyKey
     exit
 }
 
@@ -456,3 +465,4 @@ Write-Host "  Wake to run:      $wakeLabel"
 Write-Host ""
 Write-Host "  Verify:    powercfg /list" -ForegroundColor DarkGray
 Write-Host "  Uninstall: .\power-schedule.ps1 -delete" -ForegroundColor DarkGray
+Wait-AnyKey
