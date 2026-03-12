@@ -425,9 +425,23 @@ Register-ScheduledTask `
 Write-Host "  Registered: $taskName" -ForegroundColor Green
 
 # ============================================
-# 4. Done
+# 4. Activate the correct plan immediately
 # ============================================
-Write-Host "`n[4/4] Setup complete!" -ForegroundColor Cyan
+Write-Host "`n[4/4] Activating power plan..." -ForegroundColor Yellow
+
+$hour = (Get-Date).Hour
+if ($hour -ge $WORK_START -and $hour -lt $WORK_END) {
+    powercfg /setactive $workGuid
+    Write-Host "  Activated: Work (current hour: ${hour})" -ForegroundColor Green
+} else {
+    powercfg /setactive $offGuid
+    Write-Host "  Activated: Off (current hour: ${hour})" -ForegroundColor Green
+}
+
+# ============================================
+# Done
+# ============================================
+Write-Host "`nSetup complete!" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Current Settings" -ForegroundColor White
 Write-Host "  ----------------"
